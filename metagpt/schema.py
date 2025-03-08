@@ -1,17 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-@Time    : 2023/5/8 22:12
-@Author  : alexanderwu
-@File    : schema.py
-@Modified By: mashenquan, 2023-10-31. According to Chapter 2.2.1 of RFC 116:
-        Replanned the distribution of responsibilities and functional positioning of `Message` class attributes.
-@Modified By: mashenquan, 2023/11/22.
-        1. Add `Document` and `Documents` for `FileRepository` in Section 2.2.3.4 of RFC 135.
-        2. Encapsulate the common key-values set to pydantic structures to standardize and unify parameter passing
-        between actions.
-        3. Add `id` to `Message` according to Section 2.2.3.1.1 of RFC 135.
-"""
 
 from __future__ import annotations
 
@@ -70,63 +58,31 @@ from metagpt.utils.serialize import (
 
 
 class SerializationMixin(BaseSerialization):
+
     @handle_exception
     def serialize(self, file_path: str = None) -> str:
-        """Serializes the current instance to a JSON file.
-
-        If an exception occurs, `handle_exception` will catch it and return `None`.
-
-        Args:
-            file_path (str, optional): The path to the JSON file where the instance will be saved. Defaults to None.
-
-        Returns:
-            str: The path to the JSON file where the instance was saved.
-        """
-
         file_path = file_path or self.get_serialization_path()
-
         serialized_data = self.model_dump()
-
         write_json_file(file_path, serialized_data, use_fallback=True)
-        logger.debug(f"{self.__class__.__qualname__} serialization successful. File saved at: {file_path}")
+        logger.debug(
+            f"{self.__class__.__qualname__} serialization successful. File saved at: {file_path}"
+        )
 
         return file_path
 
     @classmethod
     @handle_exception
     def deserialize(cls, file_path: str = None) -> BaseModel:
-        """Deserializes a JSON file to an instance of cls.
-
-        If an exception occurs, `handle_exception` will catch it and return `None`.
-
-        Args:
-            file_path (str, optional): The path to the JSON file to read from. Defaults to None.
-
-        Returns:
-            An instance of the cls.
-        """
-
         file_path = file_path or cls.get_serialization_path()
-
         data: dict = read_json_file(file_path)
-
         model = cls(**data)
-        logger.debug(f"{cls.__qualname__} deserialization successful. Instance created from file: {file_path}")
-
+        logger.debug(
+            f"{cls.__qualname__} deserialization successful. Instance created from file: {file_path}"
+        )
         return model
 
     @classmethod
     def get_serialization_path(cls) -> str:
-        """Get the serialization path for the class.
-
-        This method constructs a file path for serialization based on the class name.
-        The default path is constructed as './workspace/storage/ClassName.json', where 'ClassName'
-        is the name of the class.
-
-        Returns:
-            str: The path to the serialization file.
-        """
-
         return str(SERDESER_PATH / f"{cls.__qualname__}.json")
 
 
@@ -168,8 +124,10 @@ class Document(BaseModel):
 
     @classmethod
     async def load(
-        cls, filename: Union[str, Path], project_path: Optional[Union[str, Path]] = None
-    ) -> Optional["Document"]:
+        cls,
+        filename: Union[str, Path],
+        project_path: Optional[Union[str,
+                                     Path]] = None) -> Optional["Document"]:
         """
         Load a document from a file.
 
@@ -218,7 +176,8 @@ class Documents(BaseModel):
         """
         from metagpt.actions.action_output import ActionOutput
 
-        return ActionOutput(content=self.model_dump_json(), instruct_content=self)
+        return ActionOutput(content=self.model_dump_json(),
+                            instruct_content=self)
 
 
 class Resource(BaseModel):
@@ -232,14 +191,19 @@ class Resource(BaseModel):
 class Message(BaseModel):
     """list[<role>: <content>]"""
 
-    id: str = Field(default="", validate_default=True)  # According to Section 2.2.3.1.1 of RFC 135
+    id: str = Field(
+        default="",
+        validate_default=True)  # According to Section 2.2.3.1.1 of RFC 135
     content: str  # natural language for user or agent
-    instruct_content: Optional[BaseModel] = Field(default=None, validate_default=True)
+    instruct_content: Optional[BaseModel] = Field(default=None,
+                                                  validate_default=True)
     role: str = "user"  # system / user / assistant
     cause_by: str = Field(default="", validate_default=True)
     sent_from: str = Field(default="", validate_default=True)
-    send_to: set[str] = Field(default={MESSAGE_ROUTE_TO_ALL}, validate_default=True)
-    metadata: Dict[str, Any] = Field(default_factory=dict)  # metadata for `content` and `instruct_content`
+    send_to: set[str] = Field(default={MESSAGE_ROUTE_TO_ALL},
+                              validate_default=True)
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict)  # metadata for `content` and `instruct_content`
 
     @field_validator("id", mode="before")
     @classmethod
@@ -253,20 +217,26 @@ class Message(BaseModel):
             if "mapping" in ic:
                 # compatible with custom-defined ActionOutput
                 mapping = actionoutput_str_to_mapping(ic["mapping"])
-                actionnode_class = import_class("ActionNode", "metagpt.actions.action_node")  # avoid circular import
-                ic_obj = actionnode_class.create_model_class(class_name=ic["class"], mapping=mapping)
+                actionnode_class = import_class(
+                    "ActionNode",
+                    "metagpt.actions.action_node")  # avoid circular import
+                ic_obj = actionnode_class.create_model_class(
+                    class_name=ic["class"], mapping=mapping)
             elif "module" in ic:
                 # subclasses of BaseModel
                 ic_obj = import_class(ic["class"], ic["module"])
             else:
-                raise KeyError("missing required key to init Message.instruct_content from dict")
+                raise KeyError(
+                    "missing required key to init Message.instruct_content from dict"
+                )
             ic = ic_obj(**ic["value"])
         return ic
 
     @field_validator("cause_by", mode="before")
     @classmethod
     def check_cause_by(cls, cause_by: Any) -> str:
-        return any_to_str(cause_by if cause_by else import_class("UserRequirement", "metagpt.actions.add_requirement"))
+        return any_to_str(cause_by if cause_by else import_class(
+            "UserRequirement", "metagpt.actions.add_requirement"))
 
     @field_validator("sent_from", mode="before")
     @classmethod
@@ -294,10 +264,18 @@ class Message(BaseModel):
                 mapping = actionoutout_schema_to_mapping(schema)
                 mapping = actionoutput_mapping_to_str(mapping)
 
-                ic_dict = {"class": schema["title"], "mapping": mapping, "value": ic.model_dump()}
+                ic_dict = {
+                    "class": schema["title"],
+                    "mapping": mapping,
+                    "value": ic.model_dump()
+                }
             else:
                 # due to instruct_content can be assigned by subclasses of BaseModel
-                ic_dict = {"class": schema["title"], "module": ic.__module__, "value": ic.model_dump()}
+                ic_dict = {
+                    "class": schema["title"],
+                    "module": ic.__module__,
+                    "value": ic.model_dump()
+                }
         return ic_dict
 
     def __init__(self, content: str = "", **data: Any):
@@ -355,7 +333,9 @@ class Message(BaseModel):
             logger.error(f"parse json failed: {val}, error:{err}")
         return None
 
-    async def parse_resources(self, llm: "BaseLLM", key_descriptions: Dict[str, str] = None) -> Dict:
+    async def parse_resources(self,
+                              llm: "BaseLLM",
+                              key_descriptions: Dict[str, str] = None) -> Dict:
         """
         `parse_resources` corresponds to the in-context adaptation capability of the input of the atomic action,
         which will be migrated to the context builder later.
@@ -377,13 +357,15 @@ class Message(BaseModel):
             '- a "resources" key contain a list of objects. Each object with:\n'
             '  - a "resource_type" key explain the type of resource;\n'
             '  - a "value" key containing a string type of resource content;\n'
-            '  - a "description" key explaining why;\n'
-        )
+            '  - a "description" key explaining why;\n')
         key_descriptions = key_descriptions or {}
         for k, v in key_descriptions.items():
             return_format += f'- a "{k}" key containing {v};\n'
         return_format += '- a "reason" key explaining why;\n'
-        instructions = ['Lists all the resources contained in the "Original Requirement".', return_format]
+        instructions = [
+            'Lists all the resources contained in the "Original Requirement".',
+            return_format
+        ]
         rsp = await llm.aask(msg=content, system_msgs=instructions)
         json_data = CodeParser.parse_code(text=rsp, lang="json")
         m = json.loads(json_data)
@@ -394,7 +376,8 @@ class Message(BaseModel):
         self.metadata[key] = value
 
     @staticmethod
-    def create_instruct_value(kvs: Dict[str, Any], class_name: str = "") -> BaseModel:
+    def create_instruct_value(kvs: Dict[str, Any],
+                              class_name: str = "") -> BaseModel:
         """
         Dynamically creates a Pydantic BaseModel subclass based on a given dictionary.
 
@@ -406,7 +389,11 @@ class Message(BaseModel):
         """
         if not class_name:
             class_name = "DM" + uuid.uuid4().hex[0:8]
-        dynamic_class = create_model(class_name, **{key: (value.__class__, ...) for key, value in kvs.items()})
+        dynamic_class = create_model(
+            class_name, **{
+                key: (value.__class__, ...)
+                for key, value in kvs.items()
+            })
         return dynamic_class.model_validate(kvs)
 
     def is_user_message(self) -> bool:
@@ -485,14 +472,12 @@ class TaskResult(BaseModel):
     is_success: bool
 
 
-@register_tool(
-    include_functions=[
-        "append_task",
-        "reset_task",
-        "replace_task",
-        "finish_current_task",
-    ]
-)
+@register_tool(include_functions=[
+    "append_task",
+    "reset_task",
+    "replace_task",
+    "finish_current_task",
+])
 class Plan(BaseModel):
     """Plan is a sequence of tasks towards a goal."""
 
@@ -504,7 +489,10 @@ class Plan(BaseModel):
 
     def _topological_sort(self, tasks: list[Task]):
         task_map = {task.task_id: task for task in tasks}
-        dependencies = {task.task_id: set(task.dependent_task_ids) for task in tasks}
+        dependencies = {
+            task.task_id: set(task.dependent_task_ids)
+            for task in tasks
+        }
         sorted_tasks = []
         visited = set()
 
@@ -625,9 +613,9 @@ class Plan(BaseModel):
                 "Task already in current plan, should use replace_task instead. Overwriting the existing task."
             )
 
-        assert all(
-            [self.has_task_id(dep_id) for dep_id in new_task.dependent_task_ids]
-        ), "New task has unknown dependencies"
+        assert all([
+            self.has_task_id(dep_id) for dep_id in new_task.dependent_task_ids
+        ]), "New task has unknown dependencies"
 
         # Existing tasks do not depend on the new task, it's fine to put it to the end of the sorted task sequence
         self.tasks.append(new_task)
@@ -648,7 +636,10 @@ class Plan(BaseModel):
                 current_task_id = task.task_id
                 break
         self.current_task_id = current_task_id
-        TaskReporter().report({"tasks": [i.model_dump() for i in self.tasks], "current_task_id": current_task_id})
+        TaskReporter().report({
+            "tasks": [i.model_dump() for i in self.tasks],
+            "current_task_id": current_task_id
+        })
 
     @property
     def current_task(self) -> Task:
@@ -682,9 +673,12 @@ class Plan(BaseModel):
         """
         return [task for task in self.tasks if task.is_finished]
 
-    def append_task(
-        self, task_id: str, dependent_task_ids: list[str], instruction: str, assignee: str, task_type: str = ""
-    ):
+    def append_task(self,
+                    task_id: str,
+                    dependent_task_ids: list[str],
+                    instruction: str,
+                    assignee: str,
+                    task_type: str = ""):
         """
         Append a new task with task_id (number) to the end of existing task sequences.
         If dependent_task_ids is not empty, the task will depend on the tasks with the ids in the list.
@@ -699,7 +693,8 @@ class Plan(BaseModel):
         )
         return self._append_task(new_task)
 
-    def replace_task(self, task_id: str, new_dependent_task_ids: list[str], new_instruction: str, new_assignee: str):
+    def replace_task(self, task_id: str, new_dependent_task_ids: list[str],
+                     new_instruction: str, new_assignee: str):
         """Replace an existing task (can be current task) based on task_id, and reset all tasks depending on it."""
         new_task = Task(
             task_id=task_id,
@@ -787,6 +782,7 @@ T = TypeVar("T", bound="BaseModel")
 
 
 class BaseContext(BaseModel, ABC):
+
     @classmethod
     @handle_exception
     def loads(cls: Type[T], val: str) -> Optional[T]:
@@ -903,7 +899,8 @@ class UMLClassMethod(UMLClassMeta):
     def get_mermaid(self, align=1) -> str:
         content = "".join(["\t" for i in range(align)]) + self.visibility
         name = self.name.split(":", 1)[1] if ":" in self.name else self.name
-        content += name + "(" + ",".join([v.get_mermaid(align=0) for v in self.args]) + ")"
+        content += name + "(" + ",".join(
+            [v.get_mermaid(align=0) for v in self.args]) + ")"
         if self.return_type:
             content += " " + self.return_type.replace(" ", "")
         # if self.abstraction:
@@ -918,7 +915,8 @@ class UMLClassView(UMLClassMeta):
     methods: List[UMLClassMethod] = Field(default_factory=list)
 
     def get_mermaid(self, align=1) -> str:
-        content = "".join(["\t" for i in range(align)]) + "class " + self.name + "{\n"
+        content = "".join(["\t" for i in range(align)
+                           ]) + "class " + self.name + "{\n"
         for v in self.attributes:
             content += v.get_mermaid(align=align + 1) + "\n"
         for v in self.methods:
@@ -932,13 +930,20 @@ class UMLClassView(UMLClassMeta):
         class_view = cls(name=dot_class_info.name, visibility=visibility)
         for i in dot_class_info.attributes.values():
             visibility = UMLClassAttribute.name_to_visibility(i.name)
-            attr = UMLClassAttribute(name=i.name, visibility=visibility, value_type=i.type_, default_value=i.default_)
+            attr = UMLClassAttribute(name=i.name,
+                                     visibility=visibility,
+                                     value_type=i.type_,
+                                     default_value=i.default_)
             class_view.attributes.append(attr)
         for i in dot_class_info.methods.values():
             visibility = UMLClassMethod.name_to_visibility(i.name)
-            method = UMLClassMethod(name=i.name, visibility=visibility, return_type=i.return_args.type_)
+            method = UMLClassMethod(name=i.name,
+                                    visibility=visibility,
+                                    return_type=i.return_args.type_)
             for j in i.args:
-                arg = UMLClassAttribute(name=j.name, value_type=j.type_, default_value=j.default_)
+                arg = UMLClassAttribute(name=j.name,
+                                        value_type=j.type_,
+                                        default_value=j.default_)
                 method.args.append(arg)
             method.return_type = i.return_args.type_
             class_view.methods.append(method)
